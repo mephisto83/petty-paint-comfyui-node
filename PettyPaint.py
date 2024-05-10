@@ -625,7 +625,7 @@ class PettyPaintComponent:
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "MODEL", "CLIP", "VAE", "IMAGE", "LORA_STACK", "STRING", "STRING", "INT", "FLOAT")
     RETURN_NAMES = ("civitai_api_key", "localUrl", "root", "model", "lora", "setups", "MODEL", "CLIP", "VAE", "IMAGE", "LORA_STACK", "Prompt", "Negative Prompt", "steps", "denoise")
     FUNCTION = "doStuff"
-    CATEGORY = "APorter"
+    CATEGORY = "PettyPaint"
 
 
 
@@ -769,7 +769,7 @@ class PettyPaintSDTurboScheduler:
                       }
                }
     RETURN_TYPES = ("SIGMAS",)
-    CATEGORY = "APorter"
+    CATEGORY = "PettyPaint"
     FUNCTION = "get_sigmas"
 
     def get_sigmas(self, model, steps, denoise):
