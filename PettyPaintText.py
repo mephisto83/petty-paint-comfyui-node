@@ -411,7 +411,6 @@ class PettyPaintConvert:
     RETURN_TYPES = (
         "STRING",
     )
-    OUTPUT_IS_LIST = [True, False]
     RETURN_NAMES = (
         "data",
     )
