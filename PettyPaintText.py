@@ -269,7 +269,7 @@ class PettyPaintLoadImages:
             result_images.append(output_image)
             result_masks.append(output_mask)
 
-        return (output_image, output_mask, )
+        return (result_images, result_masks, )
 
 class PettyPaintImageToMask:
     @classmethod
@@ -288,11 +288,13 @@ class PettyPaintImageToMask:
 
     def image_to_mask(self, images, channel):
         result = []
+        print(images)
+        print(len(images))
         for image in images:
             channels = ["red", "green", "blue", "alpha"]
             mask = image[:, :, :, channels.index(channel)]
             result.append(mask)
-        return (result,)
+        return (result, )
 
 class PettyPaintJsonMap:
     @classmethod
@@ -309,7 +311,6 @@ class PettyPaintJsonMap:
         "STRING",
         "STRING",
     )
-    OUTPUT_IS_LIST = [True, False]
     RETURN_NAMES = (
         "data",
         "STRING",
@@ -333,7 +334,7 @@ class PettyPaintJsonMap:
                 if isinstance(item, dict) and key in item:
                     item = item[key]  # Move to the next level in the JSON structure
             result.append(item)
-        return {"ui": {"text": text}, "result": (result, datas, )}
+        return  (result, )
 
 class PettyPaintExec:
     @classmethod
@@ -350,7 +351,6 @@ class PettyPaintExec:
         }
 
     RETURN_TYPES = (any,  )
-    OUTPUT_IS_LIST = [True, False]
     RETURN_NAMES = ("data",)
 
     FUNCTION = "doStuff"
@@ -369,7 +369,7 @@ class PettyPaintExec:
         
         print(res)
         print("-------------- Petty Paint exec end")
-        return ((res, ), )   
+        return (res, ) 
 
 class PettyPaintToJson:
     @classmethod
@@ -383,7 +383,6 @@ class PettyPaintToJson:
     RETURN_TYPES = (
         any,
     )
-    OUTPUT_IS_LIST = [True, False]
     RETURN_NAMES = (
         "data",
     )
@@ -397,7 +396,7 @@ class PettyPaintToJson:
         else:
             data = text
         print(data)
-        return ((data, ), )   
+        return (data, )   
 
 class PettyPaintConvert:
     @classmethod
@@ -426,7 +425,7 @@ class PettyPaintMap:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "value":  (any, {}),
+                "text":  (any, {}),
                 "code":  ("STRING", {"default": "" ,"forceInput": True, "multiline": False}),
                 
             },
@@ -438,7 +437,6 @@ class PettyPaintMap:
     RETURN_TYPES = (
         any,
     )
-    OUTPUT_IS_LIST = [True, False]
     RETURN_NAMES = (
         "data",
     )
@@ -518,6 +516,8 @@ def composite(destination, source, x, y, mask = None, multiplier = 8, resize_sou
 
     source = comfy.utils.repeat_to_batch_size(source, destination.shape[0])
 
+    print(destination.shape)
+    print(source.shape)
     x = max(-source.shape[3] * multiplier, min(x, destination.shape[3] * multiplier))
     y = max(-source.shape[2] * multiplier, min(y, destination.shape[2] * multiplier))
 
@@ -545,14 +545,27 @@ def composite(destination, source, x, y, mask = None, multiplier = 8, resize_sou
     destination[:, :, top:bottom, left:right] = source_portion + destination_portion
     return destination
 
-def combine_mask(self, destination, source, x, y, operation = "add"):
+def combine_mask(destination, source, x, y, operation = "add"):
     output = destination.reshape((-1, destination.shape[-2], destination.shape[-1])).clone()
     source = source.reshape((-1, source.shape[-2], source.shape[-1]))
 
     left, top = (x, y,)
     right, bottom = (min(left + source.shape[-1], destination.shape[-1]), min(top + source.shape[-2], destination.shape[-2]))
     visible_width, visible_height = (right - left, bottom - top,)
-
+    print("top")
+    print(top)
+    print("bottom")
+    print(bottom)
+    print("left")
+    print(left)
+    print("right")
+    print(right)
+    print("visible_height")
+    print(visible_height)
+    print("visible_width")
+    print(visible_width)
+    print(source)
+    print(destination)
     source_portion = source[:, :visible_height, :visible_width]
     destination_portion = destination[:, top:bottom, left:right]
 
@@ -594,12 +607,21 @@ class PettyPaintImageCompositeMasked:
     CATEGORY = "image"
 
     def composite(self, destination, sources, masks, x, y, resize_source):
-        destination = destination.clone().movedim(-1, 1)
-        comp_mask = masks[0]
-        for index in range(sources):
+        print(destination)
+        print(sources)
+        print(masks)
+        print(len(destination))
+        print(len(sources))
+        print(len(masks))
+        raw_masks = [mask for mask in masks]
+
+        for index in range(len(sources)):
+            destination = destination.clone().movedim(-1, 1)
             source = sources[index]
-            if index > 0:
-                comp_mask = combine_mask(comp_mask, masks[index], x, y) 
+            # if index > 0:
+            #     comp_mask = combine_mask(comp_mask, raw_masks[index], x, y) 
+            # else:
+            comp_mask = raw_masks[index][0]
             destination = composite(destination, source.movedim(-1, 1), x, y, comp_mask, 1, resize_source).movedim(1, -1)
         return (destination,)
 
