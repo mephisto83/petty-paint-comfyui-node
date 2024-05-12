@@ -152,6 +152,25 @@ class PettyPaintJsonRead:
     FUNCTION = "doStuff"
     CATEGORY = "PettyPaint"
 
+    @classmethod
+    def IS_CHANGED(self, text, path):
+        # Split the remove and add strings into lists
+
+        # Remove each substring in remove_list from tex
+        if isinstance(text, str):
+            data = json.loads(text)  # This will throw an error if text is not valid JSON
+        else:
+            data = text
+        
+        # Split the path string into keys
+        keys = path.split('.')
+        
+        # Traverse the JSON object according to the path
+        for key in keys:
+            if isinstance(data, dict) and key in data:
+                data = data[key]  # Move to the next level in the JSON structure
+        return (json.dumps(data))
+    
     def doStuff(self, text, path):
         # Split the remove and add strings into lists
 
@@ -233,6 +252,12 @@ class PettyPaintLoadImages:
                     "images": (any, {}),
                 }
         }
+        
+    @classmethod
+    def IS_CHANGED(s, images):
+        separator = " "
+        separator.join(images)
+
 
     CATEGORY = "PettyPaint"
     RETURN_TYPES = ("IMAGE","IMAGE",)
@@ -241,8 +266,52 @@ class PettyPaintLoadImages:
         result_images = []
         result_masks = []
         for image_path in images:
-            img = node_helpers.open_image(image_path)
-            
+            if os.path.exists(image_path):
+                img = node_helpers.open_image(image_path)
+                
+                output_images = []
+                output_masks = []
+                for i in ImageSequence.Iterator(img):
+                    i = ImageOps.exif_transpose(i)
+                    if i.mode == 'I':
+                        i = i.point(lambda i: i * (1 / 255))
+                    image = i.convert("RGB")
+                    image = np.array(image).astype(np.float32) / 255.0
+                    image = torch.from_numpy(image)[None,]
+                    if 'A' in i.getbands():
+                        mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                        mask = 1. - torch.from_numpy(mask)
+                    else:
+                        mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+                    output_images.append(image)
+                    output_masks.append(mask.unsqueeze(0))
+
+                if len(output_images) > 1:
+                    output_image = torch.cat(output_images, dim=0)
+                    output_mask = torch.cat(output_masks, dim=0)
+                else:
+                    output_image = output_images[0]
+                    output_mask = output_masks[0]
+                result_images.append(output_image)
+                result_masks.append(output_mask)
+
+        return (result_images, result_masks, )
+
+class PettyPaintLoadImage:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required":{ 
+                "imagepath":  (any, {}),    
+            }}
+
+    CATEGORY = "PettyPaint"
+    RETURN_TYPES = ("IMAGE","IMAGE",)
+    FUNCTION = "load_image"
+
+    def load_image(self, imagepath):
+        if os.path.exists(imagepath):
+            img = node_helpers.open_image(imagepath)
             output_images = []
             output_masks = []
             for i in ImageSequence.Iterator(img):
@@ -266,10 +335,9 @@ class PettyPaintLoadImages:
             else:
                 output_image = output_images[0]
                 output_mask = output_masks[0]
-            result_images.append(output_image)
-            result_masks.append(output_mask)
 
-        return (result_images, result_masks, )
+            return (output_image, output_mask, )
+        return (None, None, )
 
 class PettyPaintImageToMask:
     @classmethod
@@ -337,6 +405,22 @@ class PettyPaintJsonMap:
         return  (result, )
 
 class PettyPaintExec:
+    @classmethod
+    def IS_CHANGED(self, value, code, option = None):
+        datas = value
+        
+        # Traverse the JSON object according to the path
+        print("-------------- Petty Paint exec")
+        print(code)
+        print(datas)
+        print(isinstance(datas, str))
+        
+        res = eval(code, {'item': datas, "option": option})
+        
+        print(res)
+        print("-------------- Petty Paint exec end")
+        return (res, ) 
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -625,6 +709,7 @@ class PettyPaintImageCompositeMasked:
             destination = composite(destination, source.movedim(-1, 1), x, y, comp_mask, 1, resize_source).movedim(1, -1)
         return (destination,)
 
+
 def append_helper(t, mask, c, set_area_to_bounds, strength):
         n = [t[0], t[1].copy()]
         _, h, w = mask.shape
@@ -632,3 +717,81 @@ def append_helper(t, mask, c, set_area_to_bounds, strength):
         n[1]['set_area_to_bounds'] = set_area_to_bounds
         n[1]['mask_strength'] = strength
         c.append(n)  
+
+
+class PettyPaintImagePlacement:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "image_destination": ("IMAGE",),
+                "canvas_width": ("INT", { "forceInput": True, }),
+                "canvas_height": ("INT", { "forceInput": True }),
+                "destination":  ("STRING", {"default": "top-center" ,"forceInput": True, "multiline": False}),
+                "x_offset": ("INT", { "default": 0, "min": -99999, "step": 1, }),
+                "y_offset": ("INT", { "default": 0, "min": -99999, "step": 1, }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("IMAGE",)
+    FUNCTION = "execute"
+    CATEGORY = "PettyPaint"
+
+    def execute(self, image, image_destination, canvas_width, canvas_height, destination, x_offset, y_offset):
+        _, oh, ow, _ = image.shape
+
+        print("canvas_height")
+        print(canvas_height)
+        print("canvas_width")
+        print(canvas_width)
+        print("image.shape[3]")
+        print(image.shape[3])
+        canvas = image_destination.clone()
+
+        dest_x, dest_y = self._calculate_position(canvas_width, canvas_height, ow, oh, destination, x_offset, y_offset)
+
+        # Calculate the bounds for the placement to ensure the image fits within the canvas
+        top = max(0, dest_y)
+        left = max(0, dest_x)
+        bottom = min(dest_y + oh, canvas_height)
+        right = min(dest_x + ow, canvas_width)
+
+        # Placing the image on the canvas
+        # canvas[top:bottom, left:right, :] = image[:, max(0, -dest_y):oh + min(0, canvas_height - dest_y), max(0, -dest_x):ow + min(0, canvas_width - dest_x), :]
+
+        res = composite(canvas.movedim(-1, 1), image.movedim(-1, 1), left, top, None, 1, False).movedim(1, -1)
+        return res,
+
+    def _calculate_position(self, cw, ch, iw, ih, position, x_offset, y_offset):
+        if "center" in position:
+            x = (cw - iw) // 2
+            y = (ch - ih) // 2
+        elif "top" in position:
+            y = 0
+            x = (cw - iw) // 2 if "center" in position else 0 if "left" in position else cw - iw
+        elif "bottom" in position:
+            y = ch - ih
+            x = (cw - iw) // 2 if "center" in position else 0 if "left" in position else cw - iw
+        elif "left" in position:
+            x = 0
+            y = (ch - ih) // 2
+        elif "right" in position:
+            x = cw - iw
+            y = (ch - ih) // 2
+
+        x += x_offset
+        y += y_offset
+
+        # Adjusting the coordinates to ensure they remain within the image dimensions
+        x = max(0, min(x, cw - iw))
+        y = max(0, min(y, ch - ih))
+
+        return x, y
+
+    def generate_empty_image(self, width, height, batch_size=1, color=0):
+        r = torch.full([batch_size, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)
+        g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)
+        b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)
+        return (torch.cat((r, g, b), dim=-1), )

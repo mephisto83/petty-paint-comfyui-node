@@ -11,7 +11,7 @@ import __main__
 from .PettyPaint import PettyPaintComponent
 from .PettyPaint import PettyPaintSDTurboScheduler
 from .PettyPaintImageSave import PettyPaintImageSave
-from .PettyPaintText import PettyPaintConvert, PettyPaintExec, PettyPaintImageCompositeMasked, PettyPaintText, PettyPaintToJson
+from .PettyPaintText import PettyPaintConvert, PettyPaintExec, PettyPaintImageCompositeMasked, PettyPaintImagePlacement, PettyPaintLoadImage, PettyPaintText, PettyPaintToJson
 from .PettyPaintText import PettyPaintRemoveAddText
 from .PettyPaintImageStore import PettyPaintImageStore
 from .PettyPaintText import PettyPaintAppend
@@ -45,9 +45,13 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintImageCompositeMasked": PettyPaintImageCompositeMasked,
     "PettyPaintExec": PettyPaintExec,
     "PettyPaintConvert": PettyPaintConvert,
-    "PettyPaintToJson": PettyPaintToJson
+    "PettyPaintToJson": PettyPaintToJson,
+    "PettyPaintImagePlacement": PettyPaintImagePlacement,
+    "PettyPaintLoadImage": PettyPaintLoadImage
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintLoadImage": "Petty Paint Load Image",
+    "PettyPaintImagePlacement": "Petty Paint Image Placement",
     "PettyPaintToJson": "Petty Paint To Json",
     "PettyPaintConvert": "Petty Paint Convert",
     "PettyPaintExec": "Petty Paint Exec",
