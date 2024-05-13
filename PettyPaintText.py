@@ -403,7 +403,122 @@ class PettyPaintJsonMap:
                     item = item[key]  # Move to the next level in the JSON structure
             result.append(item)
         return  (result, )
+class PettyPaintEnsureDirectory:
+    RETURN_TYPES = (any,  )
+    RETURN_NAMES = ("data",)
 
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value":  (any, {}),
+            },
+        }
+    def doStuff(self, value):
+        self.ensure_directory_exists(value)
+        return (value, )
+
+    def ensure_directory_exists(self, path):
+        """
+        Ensures that the directory specified by 'path' exists. If the directory does not exist, it creates it.
+        
+        :param path: The filesystem path to the directory to check/create.
+        """
+        try:
+            # Try to create the directory (it will do nothing if the directory already exists)
+            os.makedirs(path, exist_ok=True)
+            print(f"Directory '{path}' is ready.")
+        except Exception as e:
+            print(f"Failed to create or access directory '{path}'. Reason: {e}")
+        return True
+
+class PettyPaintProcessor:
+    RETURN_TYPES = (any,  )
+    RETURN_NAMES = ("any",)
+
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value":  (any, {}),
+                "file_path":  ("STRING", { "forceInput": True, "default": "" }),
+            },
+        }
+
+    def doStuff(self, value, file_path):
+        checkpoints = folder_paths.get_filename_list("checkpoints")
+        temp = read_string_from_file(file_path)
+        data = json.loads(temp)
+        storage_path = data["storage"]
+        character_data = data["data"]
+        context = data["context"]
+        changed = False
+        try:
+            for chpt in checkpoints:
+                if changed:
+                    break
+                character_name = None
+                for c_data in character_data:
+                    character_name = c_data["name"]
+                    character_path = os.path.join(storage_path, chpt, character_name)
+                    if os.path.exists(character_path):
+                        total_files = count_files_recursively(character_path)
+                        print(f"character_path {character_path}")
+                        print(f"total_files {total_files}")
+                        if total_files != 4:
+                            context["current_character"] = character_data.index(c_data)
+                            context["model"] = chpt
+                            changed = True
+                            break
+                    else:
+                        context["current_character"] = character_data.index(c_data)
+                        context["model"] = chpt
+                        changed = True
+        except ValueError:
+            print('Item not found in the list.')
+
+        if changed:
+            if file_path:
+                write_string_to_file(json.dumps(data, indent=4, sort_keys=True), file_path)
+        res = json.dumps(data)
+        return (res, )
+
+
+class PettyPaintCountFiles:
+    RETURN_TYPES = (any,  )
+    RETURN_NAMES = ("INT",)
+
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value":  (any, {}),
+            },
+        }
+
+    def doStuff(self, value):
+        count = self.count_files_recursively(value)
+        return (count, )
+
+    def count_files_recursively(self, folder_path):
+        """
+        Recursively counts the number of files in the specified folder, including all subdirectories.
+
+        :param folder_path: The path to the folder in which to count files.
+        :return: The total number of files in the folder and its subdirectories.
+        """
+        file_count = 0
+        # Walk through directory and subdirectories
+        for root, dirs, files in os.walk(folder_path):
+            file_count += len(files)
+
+        return file_count
 class PettyPaintExec:
     @classmethod
     def IS_CHANGED(self, value, code, option = None):
@@ -795,3 +910,45 @@ class PettyPaintImagePlacement:
         g = torch.full([batch_size, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)
         b = torch.full([batch_size, height, width, 1], ((color) & 0xFF) / 0xFF)
         return (torch.cat((r, g, b), dim=-1), )
+    
+
+def count_files_recursively(folder_path):
+    """
+    Recursively counts the number of files in the specified folder, including all subdirectories.
+
+    :param folder_path: The path to the folder in which to count files.
+    :return: The total number of files in the folder and its subdirectories.
+    """
+    file_count = 0
+    # Walk through directory and subdirectories
+    for root, dirs, files in os.walk(folder_path):
+        file_count += len(files)
+
+    return file_count
+
+def write_string_to_file(string, file_path):
+    """
+    Writes a given string to a file. If the file does not exist, it will be created.
+    If the file exists, it will be overwritten.
+
+    :param string: The string to write to the file.
+    :param file_path: The path to the file where the string should be written.
+    """
+    try:
+        # Open the file in write mode ('w'). This also creates the file if it doesn't exist.
+        with open(file_path, 'w') as file:
+            file.write(string)
+        print(f"Successfully wrote to {file_path}.")
+    except Exception as e:
+        print(f"An error occurred while writing to the file: {e}")
+
+
+def read_string_from_file(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            return file.read()
+    except FileNotFoundError:
+        return None
+    except IOError as e:
+        print(f"An error occurred while reading the file: {e}")
+        return None

@@ -11,7 +11,18 @@ import __main__
 from .PettyPaint import PettyPaintComponent
 from .PettyPaint import PettyPaintSDTurboScheduler
 from .PettyPaintImageSave import PettyPaintImageSave
-from .PettyPaintText import PettyPaintConvert, PettyPaintExec, PettyPaintImageCompositeMasked, PettyPaintImagePlacement, PettyPaintLoadImage, PettyPaintText, PettyPaintToJson
+from .PettyPaintText import (
+    PettyPaintConvert,
+    PettyPaintCountFiles,
+    PettyPaintEnsureDirectory,
+    PettyPaintExec,
+    PettyPaintImageCompositeMasked,
+    PettyPaintImagePlacement,
+    PettyPaintLoadImage,
+    PettyPaintProcessor,
+    PettyPaintText,
+    PettyPaintToJson,
+)
 from .PettyPaintText import PettyPaintRemoveAddText
 from .PettyPaintImageStore import PettyPaintImageStore
 from .PettyPaintText import PettyPaintAppend
@@ -23,6 +34,7 @@ from .PettyPaintText import PettyPaintLoadImages
 from .PettyPaintText import PettyPaintImageToMask
 from .PettyPaintText import PettyPaintTexts_to_Conditioning
 from .PettyPaintText import PettyPaintMap
+
 python = sys.executable
 
 
@@ -47,9 +59,15 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintConvert": PettyPaintConvert,
     "PettyPaintToJson": PettyPaintToJson,
     "PettyPaintImagePlacement": PettyPaintImagePlacement,
-    "PettyPaintLoadImage": PettyPaintLoadImage
+    "PettyPaintLoadImage": PettyPaintLoadImage,
+    "PettyPaintEnsureDirectory": PettyPaintEnsureDirectory,
+    "PettyPaintCountFiles": PettyPaintCountFiles,
+    "PettyPaintProcessor": PettyPaintProcessor,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintProcessor": "PettyPaintProcessor",
+    "PettyPaintCountFiles": "Petty Paint Count Files",
+    "PettyPaintEnsureDirectory": "Petty Paint Ensure Directory",
     "PettyPaintLoadImage": "Petty Paint Load Image",
     "PettyPaintImagePlacement": "Petty Paint Image Placement",
     "PettyPaintToJson": "Petty Paint To Json",
