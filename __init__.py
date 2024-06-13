@@ -12,13 +12,21 @@ from .PettyPaint import PettyPaintComponent
 from .PettyPaint import PettyPaintSDTurboScheduler
 from .PettyPaintImageSave import PettyPaintImageSave
 from .PettyPaintText import (
+    PettyImageImageColorToMask,
+    PettyPaintApplyLoRAStack,
+    PettyPaintBlurs,
     PettyPaintConvert,
     PettyPaintCountFiles,
     PettyPaintEnsureDirectory,
     PettyPaintExec,
+    PettyPaintFakeConvert,
+    PettyPaintImageColorsToMasks,
     PettyPaintImageCompositeMasked,
     PettyPaintImagePlacement,
+    PettyPaintImagesToMasks,
+    PettyPaintLoRAStack,
     PettyPaintLoadImage,
+    PettyPaintMasksToImages,
     PettyPaintProcessor,
     PettyPaintText,
     PettyPaintToJson,
@@ -63,8 +71,25 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintEnsureDirectory": PettyPaintEnsureDirectory,
     "PettyPaintCountFiles": PettyPaintCountFiles,
     "PettyPaintProcessor": PettyPaintProcessor,
+    "PettyPaintLoRAStack": PettyPaintLoRAStack,
+    "PettyPaintApplyLoRAStack": PettyPaintApplyLoRAStack,
+    "PettyPaintFakeConvert": PettyPaintFakeConvert,
+    "PettyImageImageColorToMask": PettyImageImageColorToMask,
+    "PettyPaintImageColorsToMasks": PettyPaintImageColorsToMasks,
+    "PettyPaintImagesToMasks": PettyPaintImagesToMasks,
+    "PettyPaintBlurs": PettyPaintBlurs,
+    "PettyPaintMasksToImages": PettyPaintMasksToImages
 }
+
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintMasksToImages": "PettyPaintMasksToImages",
+    "PettyPaintBlurs": "PettyPaintBlurs",
+    "PettyPaintImagesToMasks": "PettyPaintImagesToMasks",
+    "PettyPaintImageColorsToMasks": "PettyPaintImageColorsToMasks",
+    "PettyImageImageColorToMask": "PettyImageImageColorToMask",
+    "PettyPaintFakeConvert": "PettyPaintFakeConvert",
+    "PettyPaintApplyLoRAStack": "Petty Paint Apply LoRA Stack",
+    "PettyPaintLoRAStack": "Petty Paint LoRAStack",
     "PettyPaintProcessor": "PettyPaintProcessor",
     "PettyPaintCountFiles": "Petty Paint Count Files",
     "PettyPaintEnsureDirectory": "Petty Paint Ensure Directory",

@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image, ImageOps, ImageSequence
 from torch import negative_
 from nodes import MAX_RESOLUTION
+import torch.nn.functional as F
 
 import folder_paths
 import node_helpers
@@ -306,7 +307,8 @@ class PettyPaintLoadImage:
             }}
 
     CATEGORY = "PettyPaint"
-    RETURN_TYPES = ("IMAGE","IMAGE",)
+    RETURN_TYPES = ("IMAGE","IMAGE", "INT", "INT", )
+    RETURN_NAMES = ("IMAGE","IMAGE", "WIDTH", "HEIGHT", )
     FUNCTION = "load_image"
 
     def load_image(self, imagepath):
@@ -314,6 +316,7 @@ class PettyPaintLoadImage:
             img = node_helpers.open_image(imagepath)
             output_images = []
             output_masks = []
+            width, height = img.size  # Get the dimensions of the image
             for i in ImageSequence.Iterator(img):
                 i = ImageOps.exif_transpose(i)
                 if i.mode == 'I':
@@ -336,8 +339,8 @@ class PettyPaintLoadImage:
                 output_image = output_images[0]
                 output_mask = output_masks[0]
 
-            return (output_image, output_mask, )
-        return (None, None, )
+            return (output_image, output_mask, width, height,)
+        return (None, None, 0 , 0)
 
 class PettyPaintImageToMask:
     @classmethod
@@ -435,8 +438,8 @@ class PettyPaintEnsureDirectory:
         return True
 
 class PettyPaintProcessor:
-    RETURN_TYPES = (any,  )
-    RETURN_NAMES = ("any",)
+    RETURN_TYPES = (any, "STRING", "STRING", any, "INT", comfy.samplers.KSampler.SAMPLERS, "FLOAT", any, "STRING", "STRING", "STRING", "STRING", "STRING",)
+    RETURN_NAMES = ("any", "output", "model", "vae", "steps", "samplers", "cfg", "scheduler", "prompt", "negative_prompt", "page_cell_path", "positivePrompts", "negativePrompts", )
 
     FUNCTION = "doStuff"
     CATEGORY = "PettyPaint"
@@ -446,30 +449,51 @@ class PettyPaintProcessor:
             "required": {
                 "value":  (any, {}),
                 "file_path":  ("STRING", { "forceInput": True, "default": "" }),
+                "expected_files":  ("INT", {  "default": 4, "min": 0, "max": 120, "step": 1 }),
             },
         }
 
-    def doStuff(self, value, file_path):
+    def IS_CHANGED(self, value, file_path, expected_files):
+        return True
+
+    def doStuff(self, value, file_path, expected_files):
         checkpoints = folder_paths.get_filename_list("checkpoints")
         temp = read_string_from_file(file_path)
         data = json.loads(temp)
         storage_path = data["storage"]
         character_data = data["data"]
+        if "pages" in data:
+            page_data = data["pages"] 
+        else:
+            page_data = []
         context = data["context"]
+        context["page_prompt"] = context.get("page_prompt", "")
+        context["page_negative_prompt"] = context.get("page_negative_prompt", "")
+        context["page_model"] = context.get("page_model", "")
+        context["model"] = context.get("model", "")
+
+        
         changed = False
+        output = ""
         try:
             for chpt in checkpoints:
-                if changed:
-                    break
                 character_name = None
                 for c_data in character_data:
+                    expected_pose_files = -1
                     character_name = c_data["name"]
                     character_path = os.path.join(storage_path, chpt, character_name)
+                    if "poses" in c_data:
+                        expected_pose_files = len(c_data["poses"]) * 2
                     if os.path.exists(character_path):
                         total_files = count_files_recursively(character_path)
                         print(f"character_path {character_path}")
                         print(f"total_files {total_files}")
-                        if total_files != 4:
+                        print(f"expected_pose_files {expected_pose_files}")
+                        output += f"character_path {character_path}\n"
+                        output += f"total_files {total_files}\n"
+                        output += f"expected_pose_files {expected_pose_files}\n"
+                        output += f"------------------------------------------\n"
+                        if (total_files < expected_files and expected_pose_files == -1) or expected_pose_files > total_files:
                             context["current_character"] = character_data.index(c_data)
                             context["model"] = chpt
                             changed = True
@@ -478,14 +502,76 @@ class PettyPaintProcessor:
                         context["current_character"] = character_data.index(c_data)
                         context["model"] = chpt
                         changed = True
+                        break
+                page_number = None
+                set_page = False
+                for p_data in page_data:
+                    cell_data = p_data["cells"]
+                    for c_data in cell_data:
+                        if not set_page:
+                            page_number = "page_" + str(p_data["page_number"]) + "_" + str(c_data["cell_number"]) + ".png"
+                            page_cell_path = os.path.join(storage_path, chpt, page_number)
+                            if not os.path.exists(page_cell_path):
+                                output += f"page_number {page_number}\n"
+                                context["page_prompt"] = c_data["environment_prompt"]
+                                context["page_negative_prompt"] = c_data["negative_prompt"]
+                                context["page_model"] = chpt
+                                context["model"] = chpt
+                                set_page = True
+                                changed = True
+                                break
+                if changed:
+                    break
         except ValueError:
             print('Item not found in the list.')
 
+        if not "page_defaults" in data:
+            data["page_defaults"] = {}
+            changed = True
+        positivePrompts = ""
+        negativePrompts = ""
+        if "model_information" in data:
+            model_information = data["model_information"]
+            if context["model"] in model_information:
+                info = model_information[context["model"]]
+                if "positivePrompts" in info:
+                    positivePrompts = " ".join(info["positivePrompts"])
+                if "negativePrompts" in info:
+                    negativePrompts = " ".join(info["negativePrompts"])
+
         if changed:
+            if "model_information" in data:
+                model_information = data["model_information"]
+                if context["model"] in model_information:
+                    info = model_information[context["model"]]
+                    if "technicalDetails" in info:
+                        technicalDetails = info["technicalDetails"]
+                        if "steps" in technicalDetails:
+                           data["character_defaults"]["steps"] = int(technicalDetails["steps"])
+                        if "sampler" in technicalDetails:
+                           data["character_defaults"]["sampler_name"] = technicalDetails["sampler"]
+                        if "steps" in technicalDetails:
+                           data["character_defaults"]["cfg"] = float(technicalDetails["cfgScale"])
+                        if "scheduler" in technicalDetails:
+                           data["character_defaults"]["scheduler"] = technicalDetails["scheduler"]
             if file_path:
                 write_string_to_file(json.dumps(data, indent=4, sort_keys=True), file_path)
         res = json.dumps(data)
-        return (res, )
+        return (
+            res, 
+            output,
+            context["model"],
+            data.get("model_information", {}).get(data.get("context", {}).get("model", {}), {}).get("vae", "sdxlVAE_sdxlVAE.safetensors"),
+            data["character_defaults"]["steps"],  
+            data["character_defaults"]["sampler_name"], 
+            data["character_defaults"]["cfg"], 
+            data["character_defaults"]["scheduler"],
+            context["page_prompt"] + " " + positivePrompts,
+            context["page_negative_prompt"] + " " + negativePrompts,
+            page_cell_path,
+            positivePrompts,
+            negativePrompts
+        )
 
 
 class PettyPaintCountFiles:
@@ -527,7 +613,6 @@ class PettyPaintExec:
         # Traverse the JSON object according to the path
         print("-------------- Petty Paint exec")
         print(code)
-        print(datas)
         print(isinstance(datas, str))
         
         res = eval(code, {'item': datas, "option": option})
@@ -541,7 +626,7 @@ class PettyPaintExec:
         return {
             "required": {
                 "value":  (any, {}),
-                "code":  ("STRING", {"default": "" ,"forceInput": True, "multiline": False}),
+                "code":  ("STRING", {"default": "" ,"multiline": True}),
                 
             },
             "optional": {
@@ -564,7 +649,11 @@ class PettyPaintExec:
         print(datas)
         print(isinstance(datas, str))
         
-        res = eval(code, {'item': datas, "option": option})
+        res = eval(code, {
+            'item': datas, 
+            "option": option,
+            'os': os
+            })
         
         print(res)
         print("-------------- Petty Paint exec end")
@@ -693,19 +782,19 @@ Bundles multiple conditioning mask and combine nodes into one,functionality is i
             mask_1 = masks[index]
             if len(mask_1.shape) < 3:
                 mask_1 = mask_1.unsqueeze(0)
-                mask_1_strength = 1
-                positive_1 = positives[index]
-                for t in positive_1:
-                    append_helper(t, mask_1, c, set_area_to_bounds, mask_1_strength)
+            mask_1_strength = 1
+            positive_1 = positives[index]
+            for t in positive_1:
+                append_helper(t, mask_1, c, set_area_to_bounds, mask_1_strength)
 
-        for index in range(len(positives)):
+        for index in range(len(negatives)):
             mask_1 = masks[index]
             if len(mask_1.shape) < 3:
                 mask_1 = mask_1.unsqueeze(0)
-                mask_1_strength = 1
-                negative_1 = negatives[index]
-                for t in negative_1:
-                    append_helper(t, mask_1, c2, set_area_to_bounds, mask_1_strength)
+            mask_1_strength = 1
+            negative_1 = negatives[index]
+            for t in negative_1:
+                append_helper(t, mask_1, c2, set_area_to_bounds, mask_1_strength)
         return (c, c2)
 
 def composite(destination, source, x, y, mask = None, multiplier = 8, resize_source = False):
@@ -952,3 +1041,332 @@ def read_string_from_file(file_path):
     except IOError as e:
         print(f"An error occurred while reading the file: {e}")
         return None
+    
+
+class PettyPaintLoRAStack:
+    @classmethod
+    def INPUT_TYPES(cls):
+        loras = ["None"] + folder_paths.get_filename_list("loras")
+        return {
+            "required": {
+                "setup": (any, ),
+            },
+             "optional": {
+                 "lora_stack": ("LORA_STACK",),
+             },
+        }
+
+    RETURN_TYPES = (
+        "LORA_STACK",
+        "STRING",
+    )
+    RETURN_NAMES = (
+        "LORA_STACK",
+        "show_help",
+    )
+    FUNCTION = "lora_stacker"
+    CATEGORY = "PettyPaint"
+
+    def lora_stacker(
+        self,
+        setup,
+        lora_stack=None,
+    ):
+        # Initialise the list
+        lora_list = list()
+        existing_loras = folder_paths.get_filename_list("loras")
+
+        if lora_stack is not None:
+            lora_list.extend([l for l in lora_stack if l[0] != "None"])
+        if setup != None:
+            for lora_setup in setup:
+                name = lora_setup.get("name")
+                model_weight = lora_setup.get("model_weight")
+                clip_weight = lora_setup.get("clip_weight")
+                if name in existing_loras and model_weight and clip_weight:
+                    lora_list.extend([(name, float(model_weight), float(clip_weight))])
+                    print("added lora")
+                else:
+                    print("skipped adding lora")
+
+        show_help = "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes/wiki/LoRA-Nodes#cr-lora-stack"
+
+        return (
+            lora_list,
+            show_help,
+        )
+
+
+class PettyPaintApplyLoRAStack:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "clip": ("CLIP",),
+                "lora_stack": ("LORA_STACK",),
+            }
+        }
+
+    RETURN_TYPES = (
+        "MODEL",
+        "CLIP",
+        "STRING",
+    )
+    RETURN_NAMES = (
+        "MODEL",
+        "CLIP",
+        "show_help",
+    )
+    FUNCTION = "apply_lora_stack"
+    CATEGORY = "PettyPaint"
+
+    def apply_lora_stack(
+        self,
+        model,
+        clip,
+        lora_stack=None,
+    ):
+        show_help = ""
+
+        # Initialise the list
+        lora_params = list()
+
+        # Extend lora_params with lora-stack items
+        if lora_stack:
+            lora_params.extend(lora_stack)
+        else:
+            return (
+                model,
+                clip,
+                show_help,
+            )
+
+        # Initialise the model and clip
+        model_lora = model
+        clip_lora = clip
+        
+        # Loop through the list
+        for tup in lora_params:
+            lora_name, strength_model, strength_clip = tup
+
+            lora_path = folder_paths.get_full_path("loras", lora_name)
+            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+            show_help += lora_name + " model: " + str(strength_model) + "  clip:" + str(strength_clip)+ "\n"
+            model_lora, clip_lora = comfy.sd.load_lora_for_models(
+                model_lora, clip_lora, lora, strength_model, strength_clip
+            )
+
+        return (
+            model_lora,
+            clip_lora,
+            show_help,
+        )
+
+
+
+class PettyPaintFakeConvert:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value": (any,),
+            }
+        }
+
+    RETURN_TYPES = (
+        "INT",
+        "STRING",
+        "FLOAT",
+        "COMBO",
+        comfy.samplers.KSampler.SAMPLERS,
+        any,
+    )
+    RETURN_NAMES = (
+         "INT",
+        "STRING",
+        "FLOAT",
+        "COMBO",
+        "SAMPLERS",
+        "any"
+    )
+    FUNCTION = "apply_lora_stack"
+    CATEGORY = "PettyPaint"
+
+    def apply_lora_stack(
+        self,
+        value,
+    ):
+        
+        return (
+            value,
+            value,
+            value,
+            value,
+            value,
+            value,
+        )
+    
+class PettyImageImageColorToMask:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "color": ("STRING", {"default": "#ffffff", "display": "color"}),
+            }
+        }
+
+    CATEGORY = "mask"
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "image_to_mask"
+
+    def hex_to_int(self, hex_str):
+        # Remove the '#' character if it exists
+        hex_str = hex_str.lstrip('#')
+        # Convert the hex string to an integer
+        return int(hex_str, 16)
+
+    def image_to_mask(self, image, color):
+        # Convert color from hex string to integer
+        color_int = self.hex_to_int(color)
+
+        temp = (torch.clamp(image, 0, 1.0) * 255.0).round().to(torch.int)
+        temp = torch.bitwise_left_shift(temp[:,:,:,0], 16) + torch.bitwise_left_shift(temp[:,:,:,1], 8) + temp[:,:,:,2]
+        mask = torch.where(temp == color_int, 255, 0).float()
+        return (mask,)
+
+    
+class PettyPaintImageColorsToMasks:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "colors": ("STRING",  {"default": "#ffffff", "forceInput": True, "display": "color"}),
+            }
+        }
+
+    CATEGORY = "PettyPaint"
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "image_to_mask"
+
+    def hex_to_int(self, hex_str):
+        # Remove the '#' character if it exists
+        hex_str = hex_str.lstrip('#')
+        # Convert the hex string to an integer
+        return int(hex_str, 16)
+
+    def image_to_mask(self, image, colors):
+        # Convert each color from hex string to integer
+        color_ints = [self.hex_to_int(color) for color in colors]
+
+        temp = (torch.clamp(image, 0, 1.0) * 255.0).round().to(torch.int)
+        temp = torch.bitwise_left_shift(temp[:,:,:,0], 16) + torch.bitwise_left_shift(temp[:,:,:,1], 8) + temp[:,:,:,2]
+
+        masks = []
+        for color_int in color_ints:
+            mask = torch.where(temp == color_int, 255, 0).float()
+            masks.append(mask)
+
+        return (masks, )
+
+class PettyPaintMasksToImages:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+                "required": {
+                    "masks": ("MASK",),
+                }
+        }
+
+    CATEGORY = "mask"
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "mask_to_image"
+
+    def mask_to_image(self, masks):
+        temp = []
+        for mask in masks:
+            result = mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1])).movedim(1, -1).expand(-1, -1, -1, 3)
+            temp.append(result)
+        return (temp,)
+
+class PettyPaintImagesToMasks:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+                "required": {
+                    "images": ("IMAGE",),
+                    "channel": (["red", "green", "blue", "alpha"],),
+                }
+        }
+
+    CATEGORY = "mask"
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "image_to_mask"
+
+    def image_to_mask(self, images, channel):
+        results = []
+        for image in images:
+            channels = ["red", "green", "blue", "alpha"]
+            mask = image[:, :, :, channels.index(channel)]
+            results.append(mask)
+        return (results,)
+
+class PettyPaintBlurs:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "blur_radius": ("INT", {
+                    "default": 1,
+                    "min": 1,
+                    "max": 31,
+                    "step": 1
+                }),
+                "sigma": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 10.0,
+                    "step": 0.1
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "blur"
+
+    CATEGORY = "image/postprocessing"
+
+    def blur(self, images: AnyType, blur_radius: int, sigma: float):
+        if blur_radius == 0:
+            return (images,)
+        results = []
+        for image in images:
+            image = image.to(comfy.model_management.get_torch_device())
+            batch_size, height, width, channels = image.shape
+
+            kernel_size = blur_radius * 2 + 1
+            kernel = gaussian_kernel(kernel_size, sigma, device=image.device).repeat(channels, 1, 1).unsqueeze(1)
+
+            image = image.permute(0, 3, 1, 2) # Torch wants (B, C, H, W) we use (B, H, W, C)
+            padded_image = F.pad(image, (blur_radius,blur_radius,blur_radius,blur_radius), 'reflect')
+            blurred = F.conv2d(padded_image, kernel, padding=kernel_size // 2, groups=channels)[:,:,blur_radius:-blur_radius, blur_radius:-blur_radius]
+            blurred = blurred.permute(0, 2, 3, 1)
+
+            results.append(blurred.to(comfy.model_management.intermediate_device()))
+        return (results, )
+
+def gaussian_kernel(kernel_size: int, sigma: float, device=None):
+    x, y = torch.meshgrid(torch.linspace(-1, 1, kernel_size, device=device), torch.linspace(-1, 1, kernel_size, device=device), indexing="ij")
+    d = torch.sqrt(x * x + y * y)
+    g = torch.exp(-(d * d) / (2.0 * sigma * sigma))
+    return g / g.sum()
