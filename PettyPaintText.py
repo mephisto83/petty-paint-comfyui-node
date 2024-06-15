@@ -471,6 +471,7 @@ class PettyPaintProcessor:
         context["page_negative_prompt"] = context.get("page_negative_prompt", "")
         context["page_model"] = context.get("page_model", "")
         context["model"] = context.get("model", "")
+        context["scene"] = context.get("scene", "default")
 
         
         changed = False
@@ -509,12 +510,14 @@ class PettyPaintProcessor:
                     cell_data = p_data["cells"]
                     for c_data in cell_data:
                         if not set_page:
-                            page_number = "page_" + str(p_data["page_number"]) + "_" + str(c_data["cell_number"]) + ".png"
+                            scene = c_data.get("scene","default")
+                            page_number = scene + ".png"
                             page_cell_path = os.path.join(storage_path, chpt, page_number)
                             if not os.path.exists(page_cell_path):
                                 output += f"page_number {page_number}\n"
                                 context["page_prompt"] = c_data["environment_prompt"]
                                 context["page_negative_prompt"] = c_data["negative_prompt"]
+                                context["scene"] = c_data.get("scene","default")
                                 context["page_model"] = chpt
                                 context["model"] = chpt
                                 set_page = True
@@ -1370,3 +1373,71 @@ def gaussian_kernel(kernel_size: int, sigma: float, device=None):
     d = torch.sqrt(x * x + y * y)
     g = torch.exp(-(d * d) / (2.0 * sigma * sigma))
     return g / g.sum()
+
+class PettyPaintPassThroughNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input_value": (any,),
+                "passit": ("BOOLEAN", {"forceInput": True, "default": False}),
+            }
+        }
+
+    RETURN_TYPES = (any,)
+    RETURN_NAMES = ("output_value",)
+    FUNCTION = "passthrough"
+    CATEGORY = "Custom"
+    DESCRIPTION = """
+    Passes the input value through unchanged and returns it with the same type.
+    """
+
+    def passthrough(self, input_value, passit):
+        if passit:
+            return (None, )
+
+        return (input_value,)
+
+
+class PettyPaintNot:
+    RETURN_TYPES = ("BOOLEAN", )
+    RETURN_NAMES = ("exists", )
+
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value":  ("BOOLEAN", {"forceInput": True, "default": False}),
+            },
+        }
+
+    def IS_CHANGED(self, value):
+        return value
+
+    def doStuff(self, value):
+        updated_value = not value
+        return (updated_value, )
+
+class PettyPaintFileExists:
+    RETURN_TYPES = ("BOOLEAN", )
+    RETURN_NAMES = ("exists", )
+
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "file_path":  ("STRING", { "forceInput": True, "default": "" }),
+            },
+        }
+
+    def IS_CHANGED(self, file_path):
+        return file_path
+
+    def doStuff(self, file_path):
+        exists = os.path.exists(file_path)
+        return (exists,)
+

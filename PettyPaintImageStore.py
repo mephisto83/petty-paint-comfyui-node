@@ -76,6 +76,7 @@ class PettyPaintImageStore:
                 "filepath": ("STRING", {"default": ""}),
                 "extension": (["png", "jpg", "jpeg", "gif", "tiff", "webp", "bmp"],),
                 "quality": ("INT", {"default": 100, "min": 1, "max": 100, "step": 1}),
+                "skip": ("BOOLEAN", {"default": False, "forceInput": True }),
             },
             "hidden": {},
         }
@@ -88,8 +89,11 @@ class PettyPaintImageStore:
     CATEGORY = "PettyPaint"
 
     def save_images(
-        self, images, filepath, extension="png", quality=100
+        self, images, filepath, extension="png", quality=100, skip=False
     ):
+        if skip:
+            return {"ui": {"images": []}}
+
         file_output_path = filepath
         # Define token system
         print(file_output_path)

@@ -20,6 +20,7 @@ from .PettyPaintText import (
     PettyPaintEnsureDirectory,
     PettyPaintExec,
     PettyPaintFakeConvert,
+    PettyPaintFileExists,
     PettyPaintImageColorsToMasks,
     PettyPaintImageCompositeMasked,
     PettyPaintImagePlacement,
@@ -27,6 +28,8 @@ from .PettyPaintText import (
     PettyPaintLoRAStack,
     PettyPaintLoadImage,
     PettyPaintMasksToImages,
+    PettyPaintNot,
+    PettyPaintPassThroughNode,
     PettyPaintProcessor,
     PettyPaintText,
     PettyPaintToJson,
@@ -78,10 +81,17 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintImageColorsToMasks": PettyPaintImageColorsToMasks,
     "PettyPaintImagesToMasks": PettyPaintImagesToMasks,
     "PettyPaintBlurs": PettyPaintBlurs,
-    "PettyPaintMasksToImages": PettyPaintMasksToImages
+    "PettyPaintMasksToImages": PettyPaintMasksToImages,
+    "PettyPaintPassThroughNode": PettyPaintPassThroughNode,
+    "PettyPaintNot": PettyPaintNot,
+    "PettyPaintFileExists": PettyPaintFileExists
+
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintFileExists": "File Exists",
+    "PettyPaintNot": "Not",
+    "PettyPaintPassThroughNode": "Pass Through Node",
     "PettyPaintMasksToImages": "PettyPaintMasksToImages",
     "PettyPaintBlurs": "PettyPaintBlurs",
     "PettyPaintImagesToMasks": "PettyPaintImagesToMasks",
