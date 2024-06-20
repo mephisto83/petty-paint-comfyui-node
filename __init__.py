@@ -8,6 +8,8 @@ import filecmp
 import shutil
 
 import __main__
+
+from .PettyPaintKSamplers import PettyPaintKSampler, PettyPaintKSamplerAdvanced, PettyPaintVAEDecode
 from .PettyPaint import PettyPaintComponent
 from .PettyPaint import PettyPaintSDTurboScheduler
 from .PettyPaintImageSave import PettyPaintImageSave
@@ -23,14 +25,17 @@ from .PettyPaintText import (
     PettyPaintFileExists,
     PettyPaintImageColorsToMasks,
     PettyPaintImageCompositeMasked,
+    PettyPaintImageDims,
     PettyPaintImagePlacement,
     PettyPaintImagesToMasks,
     PettyPaintLoRAStack,
     PettyPaintLoadImage,
+    PettyPaintLoadImageMasks,
     PettyPaintMasksToImages,
     PettyPaintNot,
     PettyPaintPassThroughNode,
     PettyPaintProcessor,
+    PettyPaintStoryImage,
     PettyPaintText,
     PettyPaintToJson,
 )
@@ -54,6 +59,7 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintTexts_to_Conditioning": PettyPaintTexts_to_Conditioning,
     "PettyPaintImageToMask": PettyPaintImageToMask,
     "PettyPaintLoadImages": PettyPaintLoadImages,
+    "PettyPaintLoadImageMasks": PettyPaintLoadImageMasks,
     "PettyPaintComponent": PettyPaintComponent,
     "PettyPaintSDTurboScheduler": PettyPaintSDTurboScheduler,
     "PettyPaintImageSave": PettyPaintImageSave,
@@ -84,11 +90,21 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintMasksToImages": PettyPaintMasksToImages,
     "PettyPaintPassThroughNode": PettyPaintPassThroughNode,
     "PettyPaintNot": PettyPaintNot,
-    "PettyPaintFileExists": PettyPaintFileExists
-
+    "PettyPaintFileExists": PettyPaintFileExists,
+    "PettyPaintStoryImage": PettyPaintStoryImage,
+    "PettyPaintKSampler": PettyPaintKSampler,
+    "PettyPaintKSamplerAdvanced": PettyPaintKSamplerAdvanced,
+    "PettyPaintVAEDecode": PettyPaintVAEDecode,
+    "PettyPaintImageDims": PettyPaintImageDims
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintImageDims": "PettyPaintImageDims",
+    "PettyPaintVAEDecode": "PettyPaintVAEDecode",
+    "PettyPaintKSamplerAdvanced": "PettyPaintKSamplerAdvanced",
+    "PettyPaintKSampler": "PettyPaintKSampler",
+    "PettyPaintStoryImage": "PettyPaintStoryImage",
+    "PettyPaintLoadImageMasks": "PettyPaintLoadImageMasks",
     "PettyPaintFileExists": "File Exists",
     "PettyPaintNot": "Not",
     "PettyPaintPassThroughNode": "Pass Through Node",

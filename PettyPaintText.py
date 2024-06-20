@@ -11,9 +11,10 @@ import sys
 import torch
 import numpy as np
 
+from nodes import MAX_RESOLUTION, SaveImage
+from comfy_extras.nodes_mask import ImageCompositeMasked
 from PIL import Image, ImageOps, ImageSequence
 from torch import negative_
-from nodes import MAX_RESOLUTION
 import torch.nn.functional as F
 
 import folder_paths
@@ -245,6 +246,50 @@ class PettyPaintTexts_to_Conditioning:
             result.append(encoded[0])
         return (result, )
 
+class PettyPaintLoadImageMasks:
+    _color_channels = ["alpha", "red", "green", "blue"]
+    @classmethod
+    def INPUT_TYPES(s):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
+        return {"required":
+                    {
+                    "images": (any, {}),
+                     "channel": (s._color_channels, ), }
+                }
+    CATEGORY = "mask"
+
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "load_image"
+    def load_image(self, images, channel):
+        masks = []
+        for image in images:
+            image_path = folder_paths.get_annotated_filepath(image)
+            i = Image.open(image_path)
+            i = ImageOps.exif_transpose(i)
+            if i.getbands() != ("R", "G", "B", "A"):
+                if i.mode == 'I':
+                    i = i.point(lambda i: i * (1 / 255))
+                i = i.convert("RGBA")
+            mask = None
+            c = channel[0].upper()
+            if c in i.getbands():
+                mask = np.array(i.getchannel(c)).astype(np.float32) / 255.0
+                mask = torch.from_numpy(mask)
+                if c == 'A':
+                    mask = 1. - mask
+            else:
+                mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        
+        masks.append(mask.unsqueeze(0))
+        return (masks, )
+
+    @classmethod
+    def IS_CHANGED(s, images):
+        separator = " "
+        separator.join(images)
+
+
 class PettyPaintLoadImages:
     @classmethod
     def INPUT_TYPES(s):
@@ -261,7 +306,7 @@ class PettyPaintLoadImages:
 
 
     CATEGORY = "PettyPaint"
-    RETURN_TYPES = ("IMAGE","IMAGE",)
+    RETURN_TYPES = ("IMAGE","MASK",)
     FUNCTION = "load_image"
     def load_image(self, images):
         result_images = []
@@ -297,6 +342,23 @@ class PettyPaintLoadImages:
                 result_masks.append(output_mask)
 
         return (result_images, result_masks, )
+class PettyPaintImageDims:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": (any, {})
+            }
+        }
+    
+    CATEGORY = "PettyPaint"
+    RETURN_TYPES = ("INT", "INT", )
+    RETURN_NAMES = ("WIDTH", "HEIGHT", )
+    FUNCTION = "load_image"
+
+    def load_image(self, image):
+        width, height = image[0].size  # Get the dimensions of the image
+        return (width, height, )
 
 class PettyPaintLoadImage:
     @classmethod
@@ -340,7 +402,171 @@ class PettyPaintLoadImage:
                 output_mask = output_masks[0]
 
             return (output_image, output_mask, width, height,)
-        return (None, None, 0 , 0)
+        return (self.create_small_image(100,100), None, 0 , 0)
+
+    def create_small_image(self,  width, height):
+        # Create a 10x10 image with a placeholder color (e.g., black)
+        image_array = Image.new("RGB", (width, height), "black")
+        image_array = np.array(image_array).astype(np.float32) / 255.0
+        image_array = torch.from_numpy(image_array)[None,]
+        return image_array
+
+
+class PettyPaintStoryImage:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+                "required": {
+                    "data":  ("STRING", {"default": "" ,"forceInput": True, "multiline": False}),
+                }
+        }
+    CATEGORY = "PettyPaint"
+    RETURN_TYPES = ("STRING","STRING",)
+    RETURN_NAMES = ("image","output", )
+    FUNCTION = "do_stuff"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, data):
+        try:
+            print("validating ------------------------------------------- story")
+            print(cls)
+            print(data)
+            if data == None:
+                print("Data is None, so not valid")
+                return True
+            story_image_config = json.loads(data)
+            required_keys = ["page_cell_path", "storage_path", "model", "page_cell", "composition"]
+            for key in required_keys:
+                if key not in story_image_config:
+                    print(f"Missing required key: {key}")
+                    return False
+
+            if not os.path.exists(story_image_config["page_cell_path"]):
+                print(f"File not found: {story_image_config['page_cell_path']}")
+                return False
+
+            for composition in story_image_config["composition"]:
+                if not os.path.exists(composition["character_path"]):
+                    print(f"Character file not found: {composition['character_path']}")
+                    return False
+                if not os.path.exists(composition["character_mask_path"]):
+                    print(f"Character mask file not found: {composition['character_mask_path']}")
+                    return False
+
+            return True
+
+        except json.JSONDecodeError:
+            print("Invalid JSON format")
+            return False
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return False
+
+    @classmethod
+    def IS_CHANGED(self, data):
+        return True
+
+    def do_stuff(self, data):
+        print("validating ------------------------------------------- story")
+        print(data)
+        output = ""
+        if data == None:
+            output = "No data"
+            return ("", output, )
+        story_image_config = json.loads(data)
+        required_keys = ["page_cell_path", "storage_path", "model", "page_cell", "composition"]
+        for key in required_keys:
+            if key not in story_image_config:
+                print(f"Missing required key: {key}")
+                return ("", output, )
+        if story_image_config["page_cell_path"] == None:
+            print(f"No file")
+            return ("", output, )
+        if not os.path.exists(story_image_config["page_cell_path"]):
+            print(f"File not found: {story_image_config['page_cell_path']}")
+            return ("", output, )
+
+        for composition in story_image_config["composition"]:
+            if not os.path.exists(composition["character_path"]):
+                print(f"Character file not found: {composition['character_path']}")
+                return ("", output, )
+            if not os.path.exists(composition["character_mask_path"]):
+                print(f"Character mask file not found: {composition['character_mask_path']}")
+                return ("", output, )
+        if story_image_config["page_cell_path"] == None:
+            print(f"Not ready yet")
+            return ("", output, )
+
+        if not os.path.exists(story_image_config["page_cell_path"]):
+            print(f"File not found: {story_image_config['page_cell_path']}")
+            return ("", output, )
+
+        page_cell_image = Image.open(story_image_config["page_cell_path"]).copy()  # Copy the original image
+        page_cell_width, page_cell_height = page_cell_image.size
+        output_path = os.path.join(
+            story_image_config["storage_path"], 
+            story_image_config["model"], 
+            f"comic_{story_image_config['page_cell']['page']}_{story_image_config['page_cell']['cell']}.png"
+        )
+        for composition in story_image_config["composition"]:
+            output += "---------------------------------------------- \n"
+            character_image = Image.open(composition["character_path"]).convert("RGBA")
+            output += f"{character_image} \n"
+            character_mask = Image.open(composition["character_mask_path"]).convert("L")
+            output += f"{character_mask} \n"
+
+            # Apply mask to character image
+            character_image.putalpha(character_mask)
+
+            # Calculate new height and width while maintaining aspect ratio
+            original_width, original_height = character_image.size
+            projected_height = abs(int(composition["camera_data"]["project_y"] - composition["camera_data"]["top_y"]))
+            aspect_ratio = original_width / original_height
+            new_width = int(projected_height * aspect_ratio)
+
+            # Resize character image
+            print("new_width")
+            print(new_width)
+            print("projected_height")
+            print(projected_height)
+            character_image = character_image.resize((new_width, projected_height))
+
+            # Calculate position
+            project_x = int(composition["camera_data"]["project_x"])
+            project_y = int(composition["camera_data"]["project_y"])
+
+            # Determine the cropping box if the character image is out of bounds
+            left = max(0, project_x - (new_width//2))
+            upper = max(0, project_y - (projected_height))
+            right = min(page_cell_width, project_x - (new_width//2))
+            lower = min(page_cell_height, project_y - (projected_height))
+            output += f"left: {left} \n"
+            output += f"upper: {upper} \n"
+            output += f"right: {right} \n"
+            output += f"lower: {lower} \n"
+            output += f"width: {new_width} \n"
+            output += f"height: {projected_height} \n"
+
+            # Crop the character image if necessary
+            if project_x < 0 or project_y < 0 or right > page_cell_width or lower > page_cell_height:
+                crop_box = (
+                    max(0, -project_x),
+                    max(0, -project_y),
+                    new_width - max(0, project_x + new_width - page_cell_width),
+                    projected_height - max(0, project_y + projected_height - page_cell_height)
+                )
+                if crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
+                    character_image = character_image.crop(crop_box)
+                else:
+                    output += f"Skipping invalid crop box for character at {composition['character_path']} \n"
+                    print(f"Skipping invalid crop box for character at {composition['character_path']}")
+                    continue
+
+            # Paste the character image
+            page_cell_image.paste(character_image, (left, upper), character_image)
+
+        page_cell_image.save(output_path)
+        return (output_path, output, )
 
 class PettyPaintImageToMask:
     @classmethod
@@ -406,6 +632,7 @@ class PettyPaintJsonMap:
                     item = item[key]  # Move to the next level in the JSON structure
             result.append(item)
         return  (result, )
+
 class PettyPaintEnsureDirectory:
     RETURN_TYPES = (any,  )
     RETURN_NAMES = ("data",)
@@ -438,8 +665,8 @@ class PettyPaintEnsureDirectory:
         return True
 
 class PettyPaintProcessor:
-    RETURN_TYPES = (any, "STRING", "STRING", any, "INT", comfy.samplers.KSampler.SAMPLERS, "FLOAT", any, "STRING", "STRING", "STRING", "STRING", "STRING",)
-    RETURN_NAMES = ("any", "output", "model", "vae", "steps", "samplers", "cfg", "scheduler", "prompt", "negative_prompt", "page_cell_path", "positivePrompts", "negativePrompts", )
+    RETURN_TYPES = (any, "STRING", "STRING", any, "INT", comfy.samplers.KSampler.SAMPLERS, "FLOAT", any, "STRING", "STRING", "STRING", "STRING", "STRING", any, )
+    RETURN_NAMES = ("any", "output", "model", "vae", "steps", "samplers", "cfg", "scheduler", "prompt", "negative_prompt", "page_cell_path", "positivePrompts", "negativePrompts", "composition", )
 
     FUNCTION = "doStuff"
     CATEGORY = "PettyPaint"
@@ -461,25 +688,40 @@ class PettyPaintProcessor:
         temp = read_string_from_file(file_path)
         data = json.loads(temp)
         storage_path = data["storage"]
-        character_data = data["data"]
+        character_datas = data["data"]
         if "pages" in data:
             page_data = data["pages"] 
         else:
             page_data = []
+        scene_data = data.get("scenes", [])
         context = data["context"]
         context["page_prompt"] = context.get("page_prompt", "")
         context["page_negative_prompt"] = context.get("page_negative_prompt", "")
         context["page_model"] = context.get("page_model", "")
         context["model"] = context.get("model", "")
+        context["camera"] = context.get("camera", "")
         context["scene"] = context.get("scene", "default")
+        context["page_background_ready"] = context.get("page_background_ready", False)
+        context["camera_info_ready"] = context.get("camera_info_ready", True)
+        context["errored"] = False
 
-        
         changed = False
         output = ""
+        composition = []
+        page_cell = {
+            "page": 0,
+            "cell": 0
+        }
         try:
             for chpt in checkpoints:
                 character_name = None
-                for c_data in character_data:
+                models_to_skip = data.get("models", {}).get("skip", [])
+                if chpt in models_to_skip:
+                    continue
+                models_to_use = data.get("models", {}).get("use", [])
+                if len(models_to_use) > 0 and chpt not in models_to_use:
+                    continue
+                for c_data in character_datas:
                     expected_pose_files = -1
                     character_name = c_data["name"]
                     character_path = os.path.join(storage_path, chpt, character_name)
@@ -495,12 +737,12 @@ class PettyPaintProcessor:
                         output += f"expected_pose_files {expected_pose_files}\n"
                         output += f"------------------------------------------\n"
                         if (total_files < expected_files and expected_pose_files == -1) or expected_pose_files > total_files:
-                            context["current_character"] = character_data.index(c_data)
+                            context["current_character"] = character_datas.index(c_data)
                             context["model"] = chpt
                             changed = True
                             break
                     else:
-                        context["current_character"] = character_data.index(c_data)
+                        context["current_character"] = character_datas.index(c_data)
                         context["model"] = chpt
                         changed = True
                         break
@@ -523,11 +765,97 @@ class PettyPaintProcessor:
                                 set_page = True
                                 changed = True
                                 break
+                set_composite = False
+                for p_data in page_data:
+                    cell_data = p_data["cells"]
+                    for c_data in cell_data:
+                        if not set_composite:
+                            scene = c_data.get("scene", "default")
+                            page_number = scene + ".png"
+                            page_cell_path = os.path.join(storage_path, chpt, page_number)
+                            camera_info_path = os.path.join(storage_path, context["camera"])
+                            context["page_cell_path"] = page_cell_path
+                            output += f"page_cell_path {page_cell_path}\n"
+                            # Check if background is ready.
+                            if os.path.exists(camera_info_path):
+                                target_cell_number = c_data["cell_number"]
+                                target_page_number = p_data["page_number"]
+                                print("Camera info path exists")
+                                context["camera_info_ready"] = True
+                                camera_info_text = read_string_from_file(camera_info_path)
+                                camera_info = json.loads(camera_info_text)
+                                context["page_background_path"] = page_cell_path
+                                output_path = os.path.join(
+                                    storage_path, 
+                                    chpt, 
+                                    f"comic_{target_page_number}_{target_cell_number}.png"
+                                )
+                                context["output_path"] = output_path
+                                output += f"output_path {output_path}\n"
+                                if os.path.exists(page_cell_path) and not os.path.exists(output_path):
+                                    print("Page background is ready")
+                                    context["page_background_ready"] = True
+                                    current_scene = next((item for item in scene_data if item["id"] == scene), None)
+                                    if current_scene:
+                                        frame = current_scene.get("frame", None)
+                                        if frame == None:
+                                            context["errored"] = "no frame found"
+                                            raise ValueError("no frame found")
+                                        else:
+                                            camera_characters = camera_info.get("frames", {}).get(frame, {}).get("characters", [])
+                                            added_composition = 0
+                                            expected_composition = 0
+                                            for name, value in data.get("characters", {}).items():
+                                                character_item = data.get("characters", {}).get(name, None)
+                                                if "object_id" in character_item:
+                                                    expected_composition += 0
+                                                    object_id = character_item["object_id"]
+                                                    print(f"object_id {object_id}")
+                                                    character_camera_data = next((item for item in camera_characters if item["object_id"] == object_id), None)
+                                                    character_data = next((item for item in character_datas if item["name"] == name), {})
+                                                    if "poses" in character_data:
+                                                        # Extracting cell_number and page_number for clarity
+                                                        page_cell["cell"]  = c_data["cell_number"]
+                                                        page_cell["page"]  = p_data["page_number"]
+                                                        # Finding the pose that contains the matching cell and page number
+                                                        pose = None
+                                                        for item in character_data["poses"]:
+                                                            for cell in item["cells"]:
+                                                                if cell["cell_number"] == target_cell_number and cell["page_number"] == target_page_number:
+                                                                    pose = item
+                                                                    break
+                                                            if pose is not None:
+                                                                break
+                                                        if pose != None:
+                                                            character_path = os.path.join(storage_path, chpt, name, pose["name"] + ".png")
+                                                            character_mask_path = os.path.join(storage_path, chpt, name, pose["name"] + "_mask.png")
+                                                            if os.path.exists(character_path) and os.path.exists(character_mask_path):
+                                                                composition.append({
+                                                                    "name": name,
+                                                                    "object_id": object_id,
+                                                                    "character_path": character_path,
+                                                                    "character_mask_path": character_mask_path,
+                                                                    "camera_data": character_camera_data
+                                                                })
+                                                                context["model"] = chpt
+                                                                added_composition += 1
+                                            if added_composition == expected_composition and expected_composition > 0:
+                                                changed = True
+                                                set_composite = True
+
+
+                                    else:
+                                        context["errored"] = "NO SCENE FOUND"
+                                        raise ValueError("NO SCENE FOUND")
+
+                       
                 if changed:
-                    break
+                    break             
+                            
+
         except ValueError:
             print('Item not found in the list.')
-
+            
         if not "page_defaults" in data:
             data["page_defaults"] = {}
             changed = True
@@ -573,9 +901,70 @@ class PettyPaintProcessor:
             context["page_negative_prompt"] + " " + negativePrompts,
             page_cell_path,
             positivePrompts,
-            negativePrompts
+            negativePrompts,
+            json.dumps({
+                "storage_path": storage_path,
+                "model": context["model"],
+                "composition" : composition, 
+                "page_cell_path": page_cell_path if len(composition) else None,
+                "page_cell": page_cell
+            })
         )
 
+    
+class ImageAndMaskPreview(SaveImage):
+    def __init__(self):
+        self.output_dir = folder_paths.get_temp_directory()
+        self.type = "temp"
+        self.prefix_append = "_temp_" + ''.join(random.choice("abcdefghijklmnopqrstupvxyz") for x in range(5))
+        self.compress_level = 4
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mask_opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "mask_color": ("STRING", {"default": "255, 255, 255"}),
+                "pass_through": ("BOOLEAN", {"default": False}),
+             },
+            "optional": {
+                "image": ("IMAGE",),
+                "mask": ("MASK",),                
+            },
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("composite",)
+    FUNCTION = "execute"
+    CATEGORY = "KJNodes"
+    DESCRIPTION = """
+Preview an image or a mask, when both inputs are used  
+composites the mask on top of the image.
+with pass_through on the preview is disabled and the  
+composite is returned from the composite slot instead,  
+this allows for the preview to be passed for video combine  
+nodes for example.
+"""
+
+    def execute(self, mask_opacity, mask_color, pass_through, filename_prefix="ComfyUI", image=None, mask=None, prompt=None, extra_pnginfo=None):
+        if mask is not None and image is None:
+            preview = mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1])).movedim(1, -1).expand(-1, -1, -1, 3)
+        elif mask is None and image is not None:
+            preview = image
+        elif mask is not None and image is not None:
+            mask_adjusted = mask * mask_opacity
+            mask_image = mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1])).movedim(1, -1).expand(-1, -1, -1, 3).clone()
+
+            color_list = list(map(int, mask_color.split(', ')))
+            print(color_list[0])
+            mask_image[:, :, :, 0] = color_list[0] // 255 # Red channel
+            mask_image[:, :, :, 1] = color_list[1] // 255 # Green channel
+            mask_image[:, :, :, 2] = color_list[2] // 255 # Blue channel
+            
+            preview, = ImageCompositeMasked.composite(self, image, mask_image, 0, 0, True, mask_adjusted)
+        if pass_through:
+            return (preview, )
+        return(self.save_images(preview, filename_prefix, prompt, extra_pnginfo))
 
 class PettyPaintCountFiles:
     RETURN_TYPES = (any,  )
