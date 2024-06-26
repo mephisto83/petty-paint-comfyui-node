@@ -1,0 +1,15 @@
+[project]
+name = "petty-paint-comfyui-node"
+description = "An integration between comfy ui and petty paint"
+version = "1.0.0"
+license = "LICENSE"
+dependencies = ["Flask==2.1.2"]
+
+[project.urls]
+Repository = "https://github.com/mephisto83/petty-paint-comfyui-node"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "petty-paint-comfyui-node"
+Icon = ""
