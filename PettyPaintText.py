@@ -374,7 +374,7 @@ class PettyPaintLoadImage:
     FUNCTION = "load_image"
 
     def load_image(self, imagepath):
-        if os.path.exists(imagepath):
+        if imagepath != None and os.path.exists(imagepath):
             img = node_helpers.open_image(imagepath)
             output_images = []
             output_masks = []
@@ -700,11 +700,12 @@ class PettyPaintProcessor:
         context["page_model"] = context.get("page_model", "")
         context["model"] = context.get("model", "")
         context["camera"] = context.get("camera", "")
-        context["scene"] = context.get("scene", "default")
+        context["scene"] = context.get("scene", "")
         context["page_background_ready"] = context.get("page_background_ready", False)
         context["camera_info_ready"] = context.get("camera_info_ready", True)
         context["errored"] = False
-
+        composite_scene = ""
+        current_scene = None
         changed = False
         output = ""
         composition = []
@@ -747,32 +748,31 @@ class PettyPaintProcessor:
                         changed = True
                         break
                 page_number = None
-                set_page = False
+                                
+                set_composite = False
                 for p_data in page_data:
                     cell_data = p_data["cells"]
                     for c_data in cell_data:
-                        if not set_page:
-                            scene = c_data.get("scene","default")
+                        if not set_composite:
+                            context["scene"] = c_data.get("scene", "fail")
+                            scene = context["scene"]
+                            composite_scene = scene
+                            if scene == "fail":
+                                print("no scene found")
+                                raise ValueError("No scene found")
                             page_number = scene + ".png"
                             page_cell_path = os.path.join(storage_path, chpt, page_number)
                             if not os.path.exists(page_cell_path):
                                 output += f"page_number {page_number}\n"
                                 context["page_prompt"] = c_data["environment_prompt"]
                                 context["page_negative_prompt"] = c_data["negative_prompt"]
-                                context["scene"] = c_data.get("scene","default")
                                 context["page_model"] = chpt
                                 context["model"] = chpt
-                                set_page = True
                                 changed = True
+                                set_composite = True
                                 break
-                set_composite = False
-                for p_data in page_data:
-                    cell_data = p_data["cells"]
-                    for c_data in cell_data:
-                        if not set_composite:
-                            scene = c_data.get("scene", "default")
-                            page_number = scene + ".png"
-                            page_cell_path = os.path.join(storage_path, chpt, page_number)
+
+
                             camera_info_path = os.path.join(storage_path, context["camera"])
                             context["page_cell_path"] = page_cell_path
                             output += f"page_cell_path {page_cell_path}\n"
@@ -780,6 +780,8 @@ class PettyPaintProcessor:
                             if os.path.exists(camera_info_path):
                                 target_cell_number = c_data["cell_number"]
                                 target_page_number = p_data["page_number"]
+                                output += f"Last Cell  page: {target_page_number}  cell {target_cell_number}\n"
+                                output += json.dumps(c_data) + "\n"
                                 print("Camera info path exists")
                                 context["camera_info_ready"] = True
                                 camera_info_text = read_string_from_file(camera_info_path)
@@ -792,9 +794,12 @@ class PettyPaintProcessor:
                                 )
                                 context["output_path"] = output_path
                                 output += f"output_path {output_path}\n"
+                                print(f"page_cell_path: {page_cell_path} {'Exists' if os.path.exists(page_cell_path) else 'Does not exist'}")
+                                print(f"output_path: {output_path} {'Exists' if os.path.exists(output_path) else 'Does not exist'}")
                                 if os.path.exists(page_cell_path) and not os.path.exists(output_path):
                                     print("Page background is ready")
                                     context["page_background_ready"] = True
+                                    composition = []
                                     current_scene = next((item for item in scene_data if item["id"] == scene), None)
                                     if current_scene:
                                         frame = current_scene.get("frame", None)
@@ -804,11 +809,11 @@ class PettyPaintProcessor:
                                         else:
                                             camera_characters = camera_info.get("frames", {}).get(frame, {}).get("characters", [])
                                             added_composition = 0
-                                            expected_composition = 0
+                                            expected_composition = len(c_data.get("poses").items())
+                                            print(f"expected_composition: {expected_composition}")
                                             for name, value in data.get("characters", {}).items():
                                                 character_item = data.get("characters", {}).get(name, None)
                                                 if "object_id" in character_item:
-                                                    expected_composition += 0
                                                     object_id = character_item["object_id"]
                                                     print(f"object_id {object_id}")
                                                     character_camera_data = next((item for item in camera_characters if item["object_id"] == object_id), None)
@@ -817,19 +822,25 @@ class PettyPaintProcessor:
                                                         # Extracting cell_number and page_number for clarity
                                                         page_cell["cell"]  = c_data["cell_number"]
                                                         page_cell["page"]  = p_data["page_number"]
+                                                        print("checking for poses")
                                                         # Finding the pose that contains the matching cell and page number
                                                         pose = None
                                                         for item in character_data["poses"]:
                                                             for cell in item["cells"]:
                                                                 if cell["cell_number"] == target_cell_number and cell["page_number"] == target_page_number:
                                                                     pose = item
+                                                                    print("pose found")
                                                                     break
                                                             if pose is not None:
                                                                 break
-                                                        if pose != None:
+                                                        if pose is not None:
+                                                            print ("Pose is not null")
                                                             character_path = os.path.join(storage_path, chpt, name, pose["name"] + ".png")
                                                             character_mask_path = os.path.join(storage_path, chpt, name, pose["name"] + "_mask.png")
+                                                            print(f"character_path : {character_path} {'Exists' if os.path.exists(character_path) else 'Does not exist'}")
+                                                            print(f"character_mask_path : {character_mask_path} {'Exists' if os.path.exists(character_mask_path) else 'Does not exist'}")
                                                             if os.path.exists(character_path) and os.path.exists(character_mask_path):
+                                                                print("adding character images")
                                                                 composition.append({
                                                                     "name": name,
                                                                     "object_id": object_id,
@@ -839,11 +850,12 @@ class PettyPaintProcessor:
                                                                 })
                                                                 context["model"] = chpt
                                                                 added_composition += 1
+                                                        else:
+                                                            print ("Pose is null")
                                             if added_composition == expected_composition and expected_composition > 0:
                                                 changed = True
                                                 set_composite = True
-
-
+                                                print("generate composite image")
                                     else:
                                         context["errored"] = "NO SCENE FOUND"
                                         raise ValueError("NO SCENE FOUND")
@@ -903,14 +915,64 @@ class PettyPaintProcessor:
             positivePrompts,
             negativePrompts,
             json.dumps({
+                "composite_scene": composite_scene,
                 "storage_path": storage_path,
                 "model": context["model"],
-                "composition" : composition, 
+                "composition" : composition,
                 "page_cell_path": page_cell_path if len(composition) else None,
-                "page_cell": page_cell
+                "page_cell": page_cell,
+                "current_scene": current_scene
             })
         )
 
+
+class PettyPaintImageMaskCropper:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "skip": ("BOOLEAN", {"default": False, "forceInput": True }),
+                "save_image_path": ("STRING", {"default": "", "forceInput": True, "multiline": False}),
+                "mask_image_path": ("STRING", {"default": "", "forceInput": True, "multiline": False}),
+                "color_image_path": ("STRING", {"default": "", "forceInput": True, "multiline": False}),
+            },
+            "optional": {
+                "image": ("IMAGE", ),
+                "mask": ("IMAGE", )
+            }
+        }
+    CATEGORY = "ImageProcessing"
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("cropped_image_path",)
+    FUNCTION = "process_images"
+
+    def process_images(self, skip, save_image_path, mask_image_path, color_image_path, image, mask):
+        if skip:
+            return (save_image_path,)
+        if not os.path.exists(mask_image_path):
+            return (save_image_path,)
+        if not os.path.exists(color_image_path):
+            return (save_image_path,)
+
+        mask_image = Image.open(mask_image_path).convert("L")
+        color_image = Image.open(color_image_path).convert("RGBA")
+
+        # Find the bounding box of the mask
+        bbox = mask_image.getbbox()
+        if not bbox:
+            raise ValueError("The mask image is completely black, no cropping region found.")
+
+        # Crop the mask and color image to the bounding box
+        cropped_mask = mask_image.crop(bbox)
+        cropped_color = color_image.crop(bbox)
+
+        # Apply the mask to the color image
+        cropped_color.putalpha(cropped_mask)
+
+        # Save the result
+        cropped_color.save(save_image_path)
+
+        return (save_image_path,)
     
 class ImageAndMaskPreview(SaveImage):
     def __init__(self):
@@ -1001,16 +1063,8 @@ class PettyPaintExec:
     @classmethod
     def IS_CHANGED(self, value, code, option = None):
         datas = value
-        
         # Traverse the JSON object according to the path
-        print("-------------- Petty Paint exec")
-        print(code)
-        print(isinstance(datas, str))
-        
         res = eval(code, {'item': datas, "option": option})
-        
-        print(res)
-        print("-------------- Petty Paint exec end")
         return (res, ) 
 
     @classmethod
@@ -1023,6 +1077,9 @@ class PettyPaintExec:
             },
             "optional": {
                 "option":  (any, {}),
+                "a":  (any, {}),
+                "b":  (any, {}),
+                "c":  (any, {}),
             }
         }
 
@@ -1032,22 +1089,22 @@ class PettyPaintExec:
     FUNCTION = "doStuff"
     CATEGORY = "PettyPaint"
 
-    def doStuff(self, value, code, option = None):
+    def doStuff(self, value, code, option = None, a = None, b = None, c = None):
         datas = value
         
         # Traverse the JSON object according to the path
         print("-------------- Petty Paint exec")
         print(code)
-        print(datas)
-        print(isinstance(datas, str))
         
         res = eval(code, {
             'item': datas, 
             "option": option,
-            'os': os
+            'os': os,
+            'a': a,
+            'b': b,
+            'c': c
             })
         
-        print(res)
         print("-------------- Petty Paint exec end")
         return (res, ) 
 
@@ -1075,7 +1132,6 @@ class PettyPaintToJson:
             print("converted string to json")
         else:
             data = text
-        print(data)
         return (data, )   
 
 class PettyPaintConvert:

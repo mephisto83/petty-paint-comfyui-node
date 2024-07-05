@@ -26,6 +26,7 @@ from .PettyPaintText import (
     PettyPaintImageColorsToMasks,
     PettyPaintImageCompositeMasked,
     PettyPaintImageDims,
+    PettyPaintImageMaskCropper,
     PettyPaintImagePlacement,
     PettyPaintImagesToMasks,
     PettyPaintLoRAStack,
@@ -95,10 +96,12 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintKSampler": PettyPaintKSampler,
     "PettyPaintKSamplerAdvanced": PettyPaintKSamplerAdvanced,
     "PettyPaintVAEDecode": PettyPaintVAEDecode,
-    "PettyPaintImageDims": PettyPaintImageDims
+    "PettyPaintImageDims": PettyPaintImageDims,
+    "PettyPaintImageMaskCropper": PettyPaintImageMaskCropper
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PettyPaintImageMaskCropper": "PettyPaintImageMaskCropper",
     "PettyPaintImageDims": "PettyPaintImageDims",
     "PettyPaintVAEDecode": "PettyPaintVAEDecode",
     "PettyPaintKSamplerAdvanced": "PettyPaintKSamplerAdvanced",

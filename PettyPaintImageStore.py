@@ -93,7 +93,8 @@ class PettyPaintImageStore:
     ):
         if skip:
             return {"ui": {"images": []}}
-
+        if filepath == "":
+            return {"ui": {"images": []}}
         file_output_path = filepath
         # Define token system
         print(file_output_path)
