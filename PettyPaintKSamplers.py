@@ -146,13 +146,18 @@ class PettyPaintVAEDecode:
                 "height": ("INT", {"default": 10, "min": 0, "max": 0xffffffffffffffff, "forceInput": True}),                
             }
         }
-    RETURN_TYPES = ("IMAGE",)
+    RETURN_TYPES = ("IMAGE", "BOOLEAN", )
+    RETURN_NAMES = ("IMAGE", "skip", )
     FUNCTION = "decode"
 
     CATEGORY = "latent"
 
     def decode(self, skip, vae, samples, width=10, height=10):
         if skip:
+            if width < 1:
+                width = 10
+            if height < 1:
+                height = 10
             return (self.create_small_image( width, height), skip, )
         return (vae.decode(samples["samples"]), skip, )
     
