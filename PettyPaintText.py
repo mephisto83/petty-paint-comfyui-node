@@ -22,6 +22,8 @@ import node_helpers
 import comfy.utils
 
 import json
+from .utils import PPApi
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy"))
 # Hack: string type that is always equal in not equal comparisons
 class AnyType(str):
@@ -31,7 +33,6 @@ class AnyType(str):
 
 # Our any instance wants to be a wildcard string
 any = AnyType("*")
-
 def is_empty_or_whitespace(s):
     if s == None:
         return True
@@ -313,7 +314,7 @@ class PettyPaintLoadImages:
         result_masks = []
         for image_path in images:
             if os.path.exists(image_path):
-                img = node_helpers.open_image(image_path)
+                img = Image.open(image_path) # node_helpers.open_image(image_path)
                 
                 output_images = []
                 output_masks = []
@@ -375,7 +376,7 @@ class PettyPaintLoadImage:
 
     def load_image(self, imagepath):
         if imagepath != None and os.path.exists(imagepath):
-            img = node_helpers.open_image(imagepath)
+            img =  Image.open(imagepath) # node_helpers.open_image(imagepath)
             output_images = []
             output_masks = []
             width, height = img.size  # Get the dimensions of the image
@@ -727,7 +728,7 @@ class PettyPaintProcessor:
                     character_name = c_data["name"]
                     character_path = os.path.join(storage_path, chpt, character_name)
                     if "poses" in c_data:
-                        expected_pose_files = len(c_data["poses"]) * 2
+                        expected_pose_files = len(c_data["poses"]) * 5
                     if os.path.exists(character_path):
                         total_files = count_files_recursively(character_path)
                         print(f"character_path {character_path}")
@@ -826,11 +827,12 @@ class PettyPaintProcessor:
                                                         # Finding the pose that contains the matching cell and page number
                                                         pose = None
                                                         for item in character_data["poses"]:
-                                                            for cell in item["cells"]:
-                                                                if cell["cell_number"] == target_cell_number and cell["page_number"] == target_page_number:
-                                                                    pose = item
-                                                                    print("pose found")
-                                                                    break
+                                                            if "cells" in item:
+                                                                for cell in item["cells"]:
+                                                                    if cell["cell_number"] == target_cell_number and cell["page_number"] == target_page_number:
+                                                                        pose = item
+                                                                        print("pose found")
+                                                                        break
                                                             if pose is not None:
                                                                 break
                                                         if pose is not None:
@@ -1027,6 +1029,79 @@ nodes for example.
         if pass_through:
             return (preview, )
         return(self.save_images(preview, filename_prefix, prompt, extra_pnginfo))
+import random
+
+class PPGenerateRandomNumber:
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("random_number",)
+
+    FUNCTION = "doStuff"
+    CATEGORY = "PettyPaint"
+    @classmethod
+    def IS_CHANGED(self, data):
+        return True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "min_value": ("INT", {"default": 0}),
+                "max_value": ("INT", {"default": 100}),
+            }
+        }
+
+    def doStuff(self, min_value, max_value):
+        random_number = random.randint(min_value, max_value)
+        return (random_number,)
+
+def generate_random_float(min_value, max_value):
+    """Generates a random float between min and max inclusive."""
+    return random.uniform(min_value, max_value)
+import random
+
+class PPGenerateRandomFloat:
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("random_float",)
+
+    FUNCTION = "doStuff"
+    CATEGORY = "CustomNodes"
+    @classmethod
+    def IS_CHANGED(self, data):
+        return True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "min_value": ("FLOAT", {"default": 0.0}),
+                "max_value": ("FLOAT", {"default": 1.0}),
+            }
+        }
+
+    def doStuff(self, min_value, max_value):
+        random_float = random.uniform(min_value, max_value)
+        return (random_float,)
+
+class PPSelectRandomValue:
+    RETURN_TYPES = ("ANY",)
+    RETURN_NAMES = ("random_value",)
+
+    FUNCTION = "doStuff"
+    CATEGORY = "CustomNodes"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value_list": ("LIST", {"default": []}),
+            }
+        }
+
+    def doStuff(self, value_list):
+        if not value_list:
+            return (None,)
+        random_value = random.choice(value_list)
+        return (random_value,)
 
 class PettyPaintCountFiles:
     RETURN_TYPES = (any,  )
@@ -1061,21 +1136,28 @@ class PettyPaintCountFiles:
         return file_count
 class PettyPaintExec:
     @classmethod
-    def IS_CHANGED(self, value, code, option = None):
+    def IS_CHANGED(self, value = None, code = None, option = None, a = None, b = None, c = None):
         datas = value
         # Traverse the JSON object according to the path
-        res = eval(code, {'item': datas, "option": option})
+        res = eval(code, {
+            'item': datas, 
+            'value': datas, 
+            "option": option,
+            'os': os,
+            'a': a,
+            'b': b,
+            'c': c
+            })
         return (res, ) 
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "value":  (any, {}),
-                "code":  ("STRING", {"default": "" ,"multiline": True}),
-                
             },
             "optional": {
+                "value":  (any, {}),
+                "code":  ("STRING", {"default": "" ,"multiline": True}),
                 "option":  (any, {}),
                 "a":  (any, {}),
                 "b":  (any, {}),
@@ -1089,7 +1171,7 @@ class PettyPaintExec:
     FUNCTION = "doStuff"
     CATEGORY = "PettyPaint"
 
-    def doStuff(self, value, code, option = None, a = None, b = None, c = None):
+    def doStuff(self, value = None, code = None, option = None, a = None, b = None, c = None):
         datas = value
         
         # Traverse the JSON object according to the path
@@ -1098,7 +1180,9 @@ class PettyPaintExec:
         
         res = eval(code, {
             'item': datas, 
+            'value': datas, 
             "option": option,
+            'api': PPApi,
             'os': os,
             'a': a,
             'b': b,
@@ -1107,6 +1191,43 @@ class PettyPaintExec:
         
         print("-------------- Petty Paint exec end")
         return (res, ) 
+
+class PettyPaintCheckpointLoaderSimple:
+    @classmethod
+    def IS_CHANGED(self, ckpt_name_override, ckpt_name, output_vae=True, output_clip=True):
+        # Traverse the JSON object according to the path
+        res =  f"{ckpt_name_override}____$${ckpt_name}"  
+        return (res, ) 
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "ckpt_name_override": (
+                    "STRING",
+                    {"default": "", "forceInput": True, "multiline": False},
+                ),
+                "ckpt_name": (folder_paths.get_filename_list("checkpoints"),),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "PettyPaint"
+
+    def load_checkpoint(self, ckpt_name_override, ckpt_name, output_vae=True, output_clip=True):
+        print("ckpt_name_override : {ckpt_name_override}")
+        print(ckpt_name_override)
+        if len(ckpt_name_override) > 0:
+            ckpt_name = ckpt_name_override
+        ckpt_path = folder_paths.get_full_path("checkpoints", ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(
+            ckpt_path,
+            output_vae=True,
+            output_clip=True,
+            embedding_directory=folder_paths.get_folder_paths("embeddings"),
+        )
+        return out[:3]
 
 class PettyPaintToJson:
     @classmethod

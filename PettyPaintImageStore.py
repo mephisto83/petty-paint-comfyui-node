@@ -81,7 +81,7 @@ class PettyPaintImageStore:
             "hidden": {},
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("STRING", "BOOLEAN")
     FUNCTION = "save_images"
 
     OUTPUT_NODE = True
@@ -92,9 +92,9 @@ class PettyPaintImageStore:
         self, images, filepath, extension="png", quality=100, skip=False
     ):
         if skip:
-            return {"ui": {"images": []}}
+            return (filepath, skip, )
         if filepath == "":
-            return {"ui": {"images": []}}
+            return (filepath, skip, )
         file_output_path = filepath
         # Define token system
         print(file_output_path)
@@ -128,4 +128,4 @@ class PettyPaintImageStore:
             except Exception as e:
                 print(e)
 
-        return {"ui": {"images": []}}
+        return (filepath, skip, )

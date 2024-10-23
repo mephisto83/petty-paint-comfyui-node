@@ -9,14 +9,19 @@ import shutil
 
 import __main__
 
-from .PettyPaintKSamplers import PettyPaintKSampler, PettyPaintKSamplerAdvanced, PettyPaintVAEDecode
+from .PettyPaintControlNetToMasking import PettyPaintControlNetToMasking
+from .PettyPaintKSamplers import ConvertWhiteToAlpha, PPKSamplerAdvanced, PettyPaintArguments, PettyPaintKSampler, PettyPaintKSamplerAdvanced, PettyPaintVAEDecode, SkippableVAEEncode
 from .PettyPaint import PettyPaintComponent
 from .PettyPaint import PettyPaintSDTurboScheduler
 from .PettyPaintImageSave import PettyPaintImageSave
 from .PettyPaintText import (
+    PPGenerateRandomFloat,
+    PPGenerateRandomNumber,
+    PPSelectRandomValue,
     PettyImageImageColorToMask,
     PettyPaintApplyLoRAStack,
     PettyPaintBlurs,
+    PettyPaintCheckpointLoaderSimple,
     PettyPaintConvert,
     PettyPaintCountFiles,
     PettyPaintEnsureDirectory,
@@ -56,7 +61,12 @@ python = sys.executable
 
 
 NODE_CLASS_MAPPINGS = {
+    "PPGenerateRandomNumber": PPGenerateRandomNumber,
+    "PPGenerateRandomFloat": PPGenerateRandomFloat,
+    "PPSelectRandomValue": PPSelectRandomValue,
+    "PettyPaintCheckpointLoaderSimple": PettyPaintCheckpointLoaderSimple,
     "PettyPaintMap": PettyPaintMap,
+    "PettyPaintArguments": PettyPaintArguments,
     "PettyPaintTexts_to_Conditioning": PettyPaintTexts_to_Conditioning,
     "PettyPaintImageToMask": PettyPaintImageToMask,
     "PettyPaintLoadImages": PettyPaintLoadImages,
@@ -80,6 +90,7 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintLoadImage": PettyPaintLoadImage,
     "PettyPaintEnsureDirectory": PettyPaintEnsureDirectory,
     "PettyPaintCountFiles": PettyPaintCountFiles,
+    "SkippableVAEEncode": SkippableVAEEncode,
     "PettyPaintProcessor": PettyPaintProcessor,
     "PettyPaintLoRAStack": PettyPaintLoRAStack,
     "PettyPaintApplyLoRAStack": PettyPaintApplyLoRAStack,
@@ -96,11 +107,22 @@ NODE_CLASS_MAPPINGS = {
     "PettyPaintKSampler": PettyPaintKSampler,
     "PettyPaintKSamplerAdvanced": PettyPaintKSamplerAdvanced,
     "PettyPaintVAEDecode": PettyPaintVAEDecode,
+    "PPKSamplerAdvanced": PPKSamplerAdvanced,
     "PettyPaintImageDims": PettyPaintImageDims,
-    "PettyPaintImageMaskCropper": PettyPaintImageMaskCropper
+    "PettyPaintImageMaskCropper": PettyPaintImageMaskCropper,
+    "PettyPaintControlNetToMasking": PettyPaintControlNetToMasking,
+    "ConvertWhiteToAlpha": ConvertWhiteToAlpha
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "PPGenerateRandomNumber": "PPGenerateRandomNumber",
+    "PPGenerateRandomFloat": "PPGenerateRandomFloat",
+    "PPSelectRandomValue": "PPSelectRandomValue",
+    "ConvertWhiteToAlpha": "ConvertWhiteToAlpha",
+    "SkippableVAEEncode": "Skippable VAEEncode",
+    "PPKSamplerAdvanced": "PPKSamplerAdvanced",
+    "PettyPaintControlNetToMasking": "PettyPaint Control Net To Masking",
+    "PettyPaintCheckpointLoaderSimple": "PettyPaint Modal Loader",
     "PettyPaintImageMaskCropper": "PettyPaintImageMaskCropper",
     "PettyPaintImageDims": "PettyPaintImageDims",
     "PettyPaintVAEDecode": "PettyPaintVAEDecode",
